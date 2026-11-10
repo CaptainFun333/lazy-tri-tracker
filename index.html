@@ -189,6 +189,10 @@ pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;bac
   var TO_MI={mi:1,km:0.621371,yd:1/1760,m:0.000621371};
   var UNIT_LABEL={mi:'mi',km:'km',yd:'yd',m:'m'};
   var PEOPLE=[{id:'brad',name:'Brad'},{id:'brooke',name:'Brooke'},{id:'alice',name:'Alice'},{id:'millie',name:'Millie'},{id:'dean',name:'Dean'},{id:'tessa',name:'Tessa'},{id:'guest',name:'Guest'}];
+  /* Shared family database (Firebase Realtime Database). Paste your database URL between the quotes,
+     for example 'https://your-project-default-rtdb.firebaseio.com'. See README.md. Leave empty to save in this browser only. */
+  var REMOTE_URL='';
+  REMOTE_URL=REMOTE_URL.replace(/\/+$/,'');
   var cur=null, cache={}, db=null, saveTimer=null, pending=false;
   var state={name:'',race:'',entries:[]};
   var $=function(id){return document.getElementById(id)};
@@ -392,7 +396,7 @@ pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;bac
     if(!cur)return;
     lsWrite();
     cache[cur.id]=payload();
-    if(!db)return;
+    if(!db){remoteSave();return}
     pending=true;
     var id=cur.id, body=payload();
     clearTimeout(saveTimer);
@@ -401,6 +405,34 @@ pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;bac
         pending=false;$('storage').textContent='Could not save to the family page. Your log is still kept in this browser. You may only have view access.';
       });
     },400);
+  }
+  function remoteSave(){
+    if(!REMOTE_URL)return;
+    pending=true;
+    var id=cur.id, body=payload();
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(function(){
+      fetch(REMOTE_URL+'/people/'+id+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(r){if(!r.ok)throw new Error('save failed');pending=false;$('storage').textContent='Saved to the family page.'})
+        .catch(function(){pending=false;$('storage').textContent='Could not reach the family page. Your log is still kept in this browser.'});
+    },400);
+  }
+  function ingest(map){
+    if(!map)return;
+    Object.keys(map).forEach(function(id){
+      var data=map[id]; if(!data)return;
+      data.entries=data.entries||[]; // the database drops empty lists
+      var typing=document.activeElement&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)&&$('person').contains(document.activeElement);
+      if(cur&&cur.id===id&&(pending||typing))return;
+      cache[id]=data;
+    });
+    if(cur&&!cache[cur.id]&&state.entries.length)save();
+    else if(cur&&cache[cur.id]&&!pending)apply(cache[cur.id],cur);
+    render();
+  }
+  function remotePull(){
+    if(!REMOTE_URL||pending)return;
+    fetch(REMOTE_URL+'/people.json').then(function(r){if(!r.ok)throw new Error('read failed');return r.json()}).then(ingest).catch(function(){});
   }
   function apply(d,p){
     d=d||{};
@@ -419,7 +451,7 @@ pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;bac
       apply(cache[p.id]||lsRead(p.id),p);
       $('eyebrow').textContent=p.name+'’s page · Nov 1 – Nov 30';
       $('title').textContent='140.6 miles in one month';
-      $('storage').textContent=db?'Saves to the family page as you go.':'Saved in this browser.';
+      $('storage').textContent=(db||REMOTE_URL)?'Saves to the family page as you go.':'Saved in this browser.';
       window.scrollTo(0,0);
     }else{
       $('eyebrow').textContent='Chomper’s Lazy Tri · Nov 1 – Nov 30';
@@ -435,6 +467,11 @@ pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;bac
     $('nav').innerHTML='<a href="#family">Family</a>'+PEOPLE.map(function(p){return '<a href="#'+p.id+'">'+p.name+'</a>'}).join('');
     window.addEventListener('hashchange',route);
     route();
+    if(REMOTE_URL&&!(window.claude&&claude.use)){
+      remotePull();
+      setInterval(remotePull,15000);
+      document.addEventListener('visibilitychange',function(){if(!document.hidden)remotePull()});
+    }
     if(window.claude&&claude.use){
       claude.use('db').then(function(d){
         if(!d)return;
