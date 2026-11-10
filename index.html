@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lazy Tri Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap">
+<style>
+/* Layout: one narrow column like a lane. Hero totals, three lane progress bars, log form, weekly report, sheet. */
+:root{
+  --bg:#eef6f7; --surface:#ffffff; --fg:#0c2a33; --muted:#52707a; --line:#cfe0e4;
+  --run:#e0612f; --bike:#1f7a8c; --swim:#2b5fd9; --good:#1f8f5f; --warn:#b7791f;
+  --accent:#0f4c5c; --accent-fg:#ffffff; --track:#dbe9ec;
+  --display:'Bricolage Grotesque',system-ui,sans-serif; --body:'Figtree',system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#08191f; --surface:#0f2730; --fg:#e4f1f3; --muted:#8fb0b8; --line:#1d3f4a;
+  --run:#ff8a5c; --bike:#4fc3d9; --swim:#7da2ff; --good:#4cd39a; --warn:#e8b04a;
+  --accent:#4fc3d9; --accent-fg:#06222a; --track:#17363f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#08191f; --surface:#0f2730; --fg:#e4f1f3; --muted:#8fb0b8; --line:#1d3f4a;
+  --run:#ff8a5c; --bike:#4fc3d9; --swim:#7da2ff; --good:#4cd39a; --warn:#e8b04a;
+  --accent:#4fc3d9; --accent-fg:#06222a; --track:#17363f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--body);padding-block:20px 48px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:720px;margin:0 auto;display:grid;gap:20px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance;line-height:1.1}
+h1{font-size:clamp(30px,8vw,44px);font-weight:800;letter-spacing:-.02em}
+h2{font-size:21px;font-weight:700}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:14px}
+.num{font-variant-numeric:tabular-nums}
+header{display:grid;gap:6px}
+.sub{color:var(--muted);margin:0}
+.hero{display:grid;gap:10px}
+.big{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.big b{font:800 clamp(44px,13vw,72px)/1 var(--display);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.big span{color:var(--muted);font-size:18px}
+.bar{height:14px;background:var(--track);border-radius:99px;overflow:hidden;display:flex}
+.bar i{display:block;height:100%;transition:width .4s}
+.bar.thin{height:10px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.lane{display:grid;gap:8px}
+.lane-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.lane-head strong{font:700 18px var(--display)}
+.lane-head .v{font-variant-numeric:tabular-nums;color:var(--muted)}
+.lane-note{font-size:14px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.pill.done{background:var(--good);border-color:var(--good);color:#fff}
+form{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+form .f{display:grid;gap:4px;min-width:0}
+.f.w2{grid-column:span 2}.f.w3{grid-column:span 3}.f.w6{grid-column:span 6}
+label{font-size:13px;font-weight:600;color:var(--muted)}
+input,select{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%;min-width:0}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+button{font:inherit;font-weight:600;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);padding:10px 16px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button.ghost{border-color:transparent;color:var(--muted);padding:4px 8px}
+button.ghost:hover{color:var(--run)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:99px}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted);min-height:20px}
+.hint.err{color:var(--run)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.r,th.r{text-align:right}
+.scroll{overflow-x:auto}
+tr.now td{background:var(--track)}
+.log{display:grid;gap:0}
+.row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.row .d{color:var(--muted);font-variant-numeric:tabular-nums;font-size:14px}
+.row .m{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+.row .w{min-width:0;overflow-wrap:anywhere}
+.row .w small{color:var(--muted)}
+.empty{color:var(--muted);padding:6px 0}
+pre{margin:0;white-space:pre-wrap;font:14px/1.5 ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;overflow-wrap:anywhere}
+.turnin{display:grid;gap:4px;font-size:14px}
+.turnin code{font:14px ui-monospace,Menlo,monospace;overflow-wrap:anywhere}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.contents{display:contents}
+.people{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.people a{flex:none;text-decoration:none;color:var(--fg);border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:7px 14px;font-weight:600;font-size:14px}
+.people a[aria-current="page"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.pcard{display:grid;gap:8px;text-decoration:none;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.pcard:hover{border-color:var(--accent)}
+.pcard .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pcard .top strong{font:700 19px var(--display)}
+.pcard .top span{font-variant-numeric:tabular-nums;color:var(--muted)}
+.pcard .pills{display:flex;gap:6px;flex-wrap:wrap}
+@media(max-width:520px){.f.w2{grid-column:span 3}.f.w3{grid-column:span 6}.row{grid-template-columns:1fr auto auto}.row .d{grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+
+<main>
+  <nav class="people" id="nav" aria-label="Family pages"></nav>
+  <header>
+    <div class="eyebrow" id="eyebrow">Chomper's Lazy Tri · Nov 1 – Nov 30</div>
+    <h1 id="title">140.6 miles in one month</h1>
+    <p class="sub" id="countdown"></p>
+  </header>
+
+  <section id="home" class="contents" hidden>
+    <div class="card" id="famtotal"></div>
+    <div id="board" style="display:grid;gap:12px"></div>
+    <div class="hint">Tap a name to open that page. Everyone can see everyone's miles.</div>
+  </section>
+
+  <div id="person" class="contents" hidden>
+
+  <section class="card hero" aria-label="Total progress">
+    <div class="big"><b id="total">0</b><span>of 140.6 miles</span></div>
+    <div class="bar" id="totalbar" role="img" aria-label="Total progress"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--run)"></i>Run/Walk</span>
+      <span><i class="dot" style="background:var(--bike)"></i>Cycle</span>
+      <span><i class="dot" style="background:var(--swim)"></i>Swim or Row</span>
+    </div>
+    <div class="lane-note" id="verdict"></div>
+  </section>
+
+  <section class="card" aria-label="Goals">
+    <div id="lanes" style="display:grid;gap:18px"></div>
+    <div class="hint">Each lane stops counting toward its pill once the goal is hit, but extra miles stay in your log. Swimming and rowing share one 2.4 mile goal.</div>
+  </section>
+
+  <section class="card" aria-labelledby="addh">
+    <h2 id="addh">Log a workout</h2>
+    <form id="form" autocomplete="off">
+      <div class="f w3"><label for="date">Date</label><input type="date" id="date" min="2026-11-01" max="2026-11-30" required></div>
+      <div class="f w3"><label for="type">Activity</label>
+        <select id="type"><option value="run">Run / Walk</option><option value="cycle">Cycle</option><option value="swim">Swim</option><option value="row">Row</option></select></div>
+      <div class="f w3"><label for="dist">Distance</label><input id="dist" inputmode="decimal" placeholder="3.1" required></div>
+      <div class="f w3"><label for="unit">Unit</label>
+        <select id="unit"><option value="mi">miles</option><option value="km">kilometers</option><option value="yd">yards</option><option value="m">meters</option></select></div>
+      <div class="f w6"><label for="note">Note (optional)</label><input id="note" maxlength="80" placeholder="Treadmill, spin class, 40 laps..."></div>
+      <div class="f w6 actions"><button class="primary" type="submit">Add to log</button><span class="hint" id="formhint"></span></div>
+    </form>
+    <div class="hint">Planned exercise only. Daily steps and chores don't count.</div>
+  </section>
+
+  <section class="card" aria-labelledby="weekh">
+    <h2 id="weekh">Weekly report</h2>
+    <p class="sub">Send last week's total by Monday. Weeks run Monday to Sunday.</p>
+    <div class="scroll"><table>
+      <thead><tr><th>Week</th><th class="r">Run/Walk</th><th class="r">Cycle</th><th class="r">Swim/Row</th><th class="r">Total</th></tr></thead>
+      <tbody id="weeks"></tbody>
+    </table></div>
+    <div class="actions"><button id="copyweek" type="button">Copy last week's message</button><span class="hint" id="weekhint"></span></div>
+  </section>
+
+  <section class="card" aria-labelledby="logh">
+    <h2 id="logh">Your log</h2>
+    <div class="log" id="log"></div>
+  </section>
+
+  <section class="card" aria-labelledby="sheeth">
+    <h2 id="sheeth">Tracking sheet</h2>
+    <div class="f" style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="f"><label for="name">First and last name</label><input id="name" placeholder="Required on your sheet"></div>
+      <div class="f"><label for="race">Race name (optional)</label><input id="race" placeholder="The Lazy Shark"></div>
+    </div>
+    <pre id="sheet"></pre>
+    <div class="actions"><button id="copysheet" type="button" class="primary">Copy sheet</button><span class="hint" id="sheethint"></span></div>
+    <div class="turnin">
+      <div class="eyebrow">Turn in by December 4 to earn the cooling towel</div>
+      <div>Email: <code>trose@oquirrhrec.gov</code></div>
+      <div>Text a photo to: <code>385-355-0530</code></div>
+      <div>Or drop it off at the office.</div>
+    </div>
+  </section>
+
+  <div class="hint" id="storage"></div>
+  </div>
+</main>
+
+<script>
+(function(){
+  var YEAR=2026, START='2026-11-01', END='2026-11-30';
+  var GOALS={run:26.2,cycle:112,swim:2.4}, TOTALGOAL=140.6;
+  var LANES=[{k:'run',name:'Run / Walk',color:'--run'},{k:'cycle',name:'Cycle',color:'--bike'},{k:'swim',name:'Swim or Row',color:'--swim'}];
+  var TYPES={run:'Run/Walk',cycle:'Cycle',swim:'Swim',row:'Row'};
+  var TO_MI={mi:1,km:0.621371,yd:1/1760,m:0.000621371};
+  var UNIT_LABEL={mi:'mi',km:'km',yd:'yd',m:'m'};
+  var PEOPLE=[{id:'brad',name:'Brad'},{id:'brooke',name:'Brooke'},{id:'alice',name:'Alice'},{id:'millie',name:'Millie'},{id:'dean',name:'Dean'},{id:'tessa',name:'Tessa'},{id:'guest',name:'Guest'}];
+  var cur=null, cache={}, db=null, saveTimer=null, pending=false;
+  var state={name:'',race:'',entries:[]};
+  var $=function(id){return document.getElementById(id)};
+  var lane=function(t){return t==='row'?'swim':t};
+  var fmt=function(n){return (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2})};
+  var fmt1=function(n){return (Math.round(n*10)/10).toFixed(1)};
+
+  /* date helpers on YYYY-MM-DD strings */
+  function pad(n){return (n<10?'0':'')+n}
+  function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+  function toUTC(s){var p=s.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2])}
+  function fromUTC(t){var d=new Date(t);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+  function addDays(s,n){return fromUTC(toUTC(s)+n*86400000)}
+  function weekStart(s){var d=new Date(toUTC(s)).getUTCDay();return addDays(s,-((d+6)%7))}
+  function short(s){var d=new Date(toUTC(s));return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+' '+d.getUTCDate()}
+  function dow(s){return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(toUTC(s)).getUTCDay()]}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  function totals(list){
+    var t={run:0,cycle:0,swim:0};
+    (list||state.entries).forEach(function(e){t[lane(e.type)]+=e.miles});
+    return t;
+  }
+
+  /* ---------- render ---------- */
+  function render(){
+    var t=totals(), today=todayStr();
+    var counted=Math.min(t.run,GOALS.run)+Math.min(t.cycle,GOALS.cycle)+Math.min(t.swim,GOALS.swim);
+    var all=t.run+t.cycle+t.swim;
+    $('total').textContent=fmt(all);
+
+    // total bar, segments scaled to 140.6
+    var segs=LANES.map(function(l){return '<i style="width:'+Math.min(100,t[l.k]/TOTALGOAL*100)+'%;background:var('+l.color+')"></i>'}).join('');
+    $('totalbar').innerHTML=segs;
+    $('totalbar').setAttribute('aria-label',fmt(all)+' of 140.6 miles');
+
+    // countdown
+    var cd;
+    if(today<START){cd=Math.round((toUTC(START)-toUTC(today))/86400000)+' days until the challenge starts.'}
+    else if(today>END){cd='The challenge window has closed. Turn in your sheet by December 4.'}
+    else{var left=Math.round((toUTC(END)-toUTC(today))/86400000)+1;cd=left+(left===1?' day':' days')+' left, counting today. Last day to log is November 30.'}
+    $('countdown').textContent=cd;
+
+    // lanes
+    var daysLeft=today<START?30:(today>END?0:Math.round((toUTC(END)-toUTC(today))/86400000)+1);
+    $('lanes').innerHTML=LANES.map(function(l){
+      var g=GOALS[l.k], v=t[l.k], rem=Math.max(0,g-v), done=v>=g-1e-9;
+      var note;
+      if(done){note='<span class="pill done">Goal reached</span>'+(v>g+1e-9?'<span>'+fmt(v-g)+' mi extra</span>':'')}
+      else{
+        note='<span>'+fmt(rem)+' mi to go</span>';
+        if(daysLeft>0){var per=rem/daysLeft;note+='<span class="pill">'+(l.k==='swim'?fmt(per*1760)+' yd/day':fmt(per)+' mi/day')+' to finish</span>'}
+      }
+      return '<div class="lane"><div class="lane-head"><strong>'+l.name+'</strong><span class="v"><b style="color:var(--fg)">'+fmt(v)+'</b> / '+g+' mi</span></div>'+
+        '<div class="bar thin" role="img" aria-label="'+l.name+' '+fmt(v)+' of '+g+' miles"><i style="width:'+Math.min(100,v/g*100)+'%;background:var('+l.color+')"></i></div>'+
+        '<div class="lane-note">'+note+'</div></div>';
+    }).join('');
+
+    // verdict
+    var met=LANES.filter(function(l){return t[l.k]>=GOALS[l.k]-1e-9}).length;
+    var v;
+    if(met===3)v='<span class="pill done">All three goals complete</span><span>Submit your sheet by December 4 for the towel.</span>';
+    else if(!state.entries.length)v='<span>Add your first workout below.</span>';
+    else v='<span>'+met+' of 3 goals complete.</span><span>'+fmt(Math.max(0,TOTALGOAL-counted))+' counted miles remaining.</span>';
+    $('verdict').innerHTML=v;
+
+    renderWeeks(today); renderLog(); renderSheet();
+    renderHome();
+  }
+
+  function renderHome(){
+    var rows=PEOPLE.map(function(p){
+      var d=(cur&&cur.id===p.id)?state:(cache[p.id]||lsRead(p.id)), es=(d&&d.entries)||[], t=totals(es);
+      var counted=Math.min(t.run,GOALS.run)+Math.min(t.cycle,GOALS.cycle)+Math.min(t.swim,GOALS.swim);
+      return {p:p,d:d,t:t,counted:counted,n:es.length};
+    });
+    var fam=0;rows.forEach(function(r){fam+=r.t.run+r.t.cycle+r.t.swim});
+    $('famtotal').innerHTML='<div class="eyebrow">Family total</div><div class="big"><b>'+fmt(fam)+'</b><span>miles logged together</span></div>';
+    rows.sort(function(a,b){return b.counted-a.counted});
+    $('board').innerHTML=rows.map(function(r){
+      var title=(r.d&&r.d.race)?esc(r.d.race)+' <small style="font-weight:500;color:var(--muted)">'+r.p.name+'</small>':r.p.name;
+      var pills=LANES.map(function(l){var done=r.t[l.k]>=GOALS[l.k]-1e-9;return '<span class="pill'+(done?' done':'')+'">'+l.name+' '+fmt(r.t[l.k])+'/'+GOALS[l.k]+'</span>'}).join('');
+      return '<a class="pcard" href="#'+r.p.id+'"><div class="top"><strong>'+title+'</strong><span>'+fmt(r.counted)+' / 140.6 mi</span></div>'+
+        '<div class="bar thin"><i style="width:'+Math.min(100,r.counted/TOTALGOAL*100)+'%;background:var(--accent)"></i></div><div class="pills">'+pills+'</div></a>';
+    }).join('');
+  }
+
+  function weeksList(){
+    var w=[], s=weekStart(START);
+    while(s<=END){w.push(s);s=addDays(s,7)}
+    return w;
+  }
+  function weekTotals(ws){
+    var we=addDays(ws,6);
+    return totals(state.entries.filter(function(e){return e.date>=ws&&e.date<=we}));
+  }
+  function weekLabel(ws){
+    var a=ws<START?START:ws, b=addDays(ws,6); if(b>END)b=END;
+    return a===b?short(a):short(a)+' – '+short(b);
+  }
+  function lastFullWeekStart(today){
+    var cur=weekStart(today<START?START:(today>END?END:today));
+    // the week before the current one; after the window, the final week
+    if(today>END)return weekStart(END);
+    return addDays(cur,-7);
+  }
+  function renderWeeks(today){
+    var cur=weekStart(today), rows='';
+    weeksList().forEach(function(ws){
+      var t=weekTotals(ws), sum=t.run+t.cycle+t.swim;
+      rows+='<tr'+(ws===cur?' class="now"':'')+'><td>'+weekLabel(ws)+(ws===cur?' · this week':'')+'</td><td class="r">'+fmt(t.run)+'</td><td class="r">'+fmt(t.cycle)+'</td><td class="r">'+fmt(t.swim)+'</td><td class="r"><b>'+fmt(sum)+'</b></td></tr>';
+    });
+    var all=totals();
+    rows+='<tr><td><b>Challenge</b></td><td class="r"><b>'+fmt(all.run)+'</b></td><td class="r"><b>'+fmt(all.cycle)+'</b></td><td class="r"><b>'+fmt(all.swim)+'</b></td><td class="r"><b>'+fmt(all.run+all.cycle+all.swim)+'</b></td></tr>';
+    $('weeks').innerHTML=rows;
+  }
+
+  function renderLog(){
+    var list=state.entries.slice().sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:b.id-a.id});
+    if(!list.length){$('log').innerHTML='<div class="empty">Nothing logged yet. Your workouts will show up here, newest first.</div>';return}
+    $('log').innerHTML=list.map(function(e){
+      var orig=e.u&&e.u!=='mi'?' <small>('+fmt(e.v)+' '+UNIT_LABEL[e.u]+')</small>':'';
+      return '<div class="row"><span class="d">'+dow(e.date)+', '+short(e.date)+'</span>'+
+        '<span class="w"><span style="color:var(--'+(lane(e.type)==='run'?'run':lane(e.type)==='cycle'?'bike':'swim')+')">●</span> '+TYPES[e.type]+(e.note?' <small>· '+esc(e.note)+'</small>':'')+'</span>'+
+        '<span class="m">'+fmt(e.miles)+' mi'+orig+'</span>'+
+        '<button class="ghost" data-del="'+e.id+'" aria-label="Delete entry">Delete</button></div>';
+    }).join('');
+  }
+
+  function sheetText(){
+    var t=totals(), nm=(state.name||'(your name)').trim(), rn=(state.race||'').trim();
+    var lines=['CHOMPER\'S LAZY TRI — TRACKING SHEET','Name: '+nm+(rn?'  |  Race name: '+rn:''),''];
+    var byDate={};
+    state.entries.slice().sort(function(a,b){return a.date<b.date?-1:a.date>b.date?1:a.id-b.id}).forEach(function(e){(byDate[e.date]=byDate[e.date]||[]).push(e)});
+    Object.keys(byDate).forEach(function(d){
+      var parts=byDate[d].map(function(e){return TYPES[e.type]+' '+fmt(e.miles)}).join(', ');
+      lines.push(short(d)+': '+parts);
+    });
+    if(!Object.keys(byDate).length)lines.push('(no workouts logged yet)');
+    lines.push('');
+    lines.push('Run/Walk: '+fmt(t.run)+' / 26.2 mi');
+    lines.push('Cycle: '+fmt(t.cycle)+' / 112 mi');
+    lines.push('Swim or Row: '+fmt(t.swim)+' / 2.4 mi');
+    lines.push('TOTAL: '+fmt(t.run+t.cycle+t.swim)+' / 140.6 mi');
+    return lines.join('\n');
+  }
+  function renderSheet(){$('sheet').textContent=sheetText()}
+
+  /* ---------- clipboard ---------- */
+  function copy(text,hintId,msg){
+    var h=$(hintId), ok=function(){h.className='hint';h.textContent=msg;setTimeout(function(){h.textContent=''},2500)};
+    var fallback=function(){
+      var ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+      try{document.execCommand('copy')?ok():(h.className='hint err',h.textContent='Select the text and copy it by hand.')}catch(e){h.className='hint err';h.textContent='Select the text and copy it by hand.'}
+      document.body.removeChild(ta);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(ok,fallback)}else fallback();
+  }
+
+  /* ---------- actions ---------- */
+  $('form').addEventListener('submit',function(ev){
+    ev.preventDefault();
+    var date=$('date').value, type=$('type').value, unit=$('unit').value;
+    var v=parseFloat($('dist').value.replace(',','.')), h=$('formhint');
+    h.className='hint err';
+    if(!date||date<START||date>END){h.textContent='Pick a date between Nov 1 and Nov 30.';return}
+    if(!(v>0)||v>500){h.textContent='Enter a distance greater than zero.';return}
+    var miles=Math.round(v*TO_MI[unit]*1000)/1000;
+    state.entries.push({id:Date.now(),date:date,type:type,v:v,u:unit,miles:miles,note:$('note').value.trim()});
+    $('dist').value='';$('note').value='';
+    h.className='hint';h.textContent='Added '+fmt(miles)+' mi of '+TYPES[type].toLowerCase()+'.';
+    setTimeout(function(){h.textContent=''},3000);
+    save();render();$('dist').focus();
+  });
+  $('type').addEventListener('change',function(){
+    var t=$('type').value; // sensible default units
+    $('unit').value=(t==='swim')?'yd':(t==='row'?'m':'mi');
+  });
+  $('log').addEventListener('click',function(ev){
+    var b=ev.target.closest('[data-del]'); if(!b)return;
+    var id=+b.getAttribute('data-del');
+    if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='Tap to confirm';setTimeout(function(){if(b.isConnected){b.dataset.armed='';b.textContent='Delete'}},3000);return}
+    state.entries=state.entries.filter(function(e){return e.id!==id});save();render();
+  });
+  $('name').addEventListener('input',function(){state.name=this.value;save();renderSheet()});
+  $('race').addEventListener('input',function(){state.race=this.value;save();renderSheet()});
+  $('copysheet').addEventListener('click',function(){copy(sheetText(),'sheethint','Sheet copied.')});
+  $('copyweek').addEventListener('click',function(){
+    var ws=lastFullWeekStart(todayStr()), t=weekTotals(ws), sum=t.run+t.cycle+t.swim;
+    var who=(state.race||state.name||'').trim();
+    var msg='Lazy Tri weekly update'+(who?' from '+who:'')+', '+weekLabel(ws)+': Run/Walk '+fmt(t.run)+' mi, Cycle '+fmt(t.cycle)+' mi, Swim/Row '+fmt(t.swim)+' mi. Week total '+fmt(sum)+' mi. Challenge total '+fmt(totals().run+totals().cycle+totals().swim)+' mi.';
+    copy(msg,'weekhint','Copied for '+weekLabel(ws)+'.');
+  });
+
+  /* ---------- storage: private db doc when signed in, else this browser ---------- */
+  function lsKey(id){return 'lazy-tri-2026-'+id}
+  function lsRead(id){try{var s=localStorage.getItem(lsKey(id));return s?JSON.parse(s):null}catch(e){return null}}
+  function lsWrite(){if(!cur)return;try{localStorage.setItem(lsKey(cur.id),JSON.stringify(state))}catch(e){}}
+  function payload(){return {name:state.name,race:state.race,entries:state.entries}}
+  function save(){
+    if(!cur)return;
+    lsWrite();
+    cache[cur.id]=payload();
+    if(!db)return;
+    pending=true;
+    var id=cur.id, body=payload();
+    clearTimeout(saveTimer);
+    saveTimer=setTimeout(function(){
+      db.collection('people').doc(id).set(body).then(function(){pending=false;$('storage').textContent='Saved to the family page.'},function(){
+        pending=false;$('storage').textContent='Could not save to the family page. Your log is still kept in this browser. You may only have view access.';
+      });
+    },400);
+  }
+  function apply(d,p){
+    d=d||{};
+    state.name=d.name!=null&&d.name!==''?d.name:(p.id==='guest'?'':p.name);
+    state.race=d.race||'';
+    state.entries=(d.entries||[]).filter(function(e){return e&&e.date&&e.miles>=0});
+    $('name').value=state.name;$('race').value=state.race;
+  }
+  function route(){
+    var id=location.hash.replace('#',''), p=PEOPLE.filter(function(x){return x.id===id})[0]||null;
+    cur=p;
+    $('home').hidden=!!p;$('person').hidden=!p;
+    var links=document.querySelectorAll('#nav a');
+    for(var i=0;i<links.length;i++){var on=(links[i].getAttribute('href')==='#'+(p?p.id:'family'));if(on)links[i].setAttribute('aria-current','page');else links[i].removeAttribute('aria-current')}
+    if(p){
+      apply(cache[p.id]||lsRead(p.id),p);
+      $('eyebrow').textContent=p.name+'’s page · Nov 1 – Nov 30';
+      $('title').textContent='140.6 miles in one month';
+      $('storage').textContent=db?'Saves to the family page as you go.':'Saved in this browser.';
+      window.scrollTo(0,0);
+    }else{
+      $('eyebrow').textContent='Chomper’s Lazy Tri · Nov 1 – Nov 30';
+      $('title').textContent='Family leaderboard';
+    }
+    render();
+  }
+  function init(){
+    var today=todayStr();
+    $('date').value=today<START?START:(today>END?END:today);
+    $('type').dispatchEvent(new Event('change'));
+    $('unit').value='mi';
+    $('nav').innerHTML='<a href="#family">Family</a>'+PEOPLE.map(function(p){return '<a href="#'+p.id+'">'+p.name+'</a>'}).join('');
+    window.addEventListener('hashchange',route);
+    route();
+    if(window.claude&&claude.use){
+      claude.use('db').then(function(d){
+        if(!d)return;
+        db=d;
+        db.collection('people').onSnapshot(function(snap){
+          snap.docs.forEach(function(s){
+            if(!s.exists)return;
+            var data=s.data(); if(!data)return;
+            var isMine=cur&&cur.id===s.id;
+            if(isMine&&(pending||document.activeElement&&/^(INPUT|SELECT)$/.test(document.activeElement.tagName)&&$('person').contains(document.activeElement)))return;
+            cache[s.id]=data;
+          });
+          // first load: push any browser-only log up if the family page has none for this person
+          if(cur&&!cache[cur.id]&&state.entries.length)save();
+          else if(cur&&cache[cur.id]&&!pending)apply(cache[cur.id],cur);
+          render();
+          if(!pending)$('storage').textContent=cur?'Saves to the family page as you go.':'';
+        },function(){db=null;});
+      }).catch(function(){});
+    }
+  }
+  init();
+})();
+</script>
+
+</html>
